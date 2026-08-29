@@ -1,0 +1,36 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs
+.vscode/
+.idea/
+
+# Local configuration & sensitive keys (CRITICAL)
+*api key*.txt
+credentials.py
+
+# Large binary assets & voice models
+Models/
+GPT-SoVITS/
+voice sample/
+*.vrm
+*.wav
+*.mp3
+
+# Logs & temp files
+Logs/
+*.log
+graphify-out/
+.hermes/
+
+# Deprecated/Old Files & Scratch Notes
+HAWSBERRY_CONTEXT.md
+Context etc.txt
+PRESS
+fasterWhispertechnical.txt
+how to activate.txt
+archive/
+fix/
