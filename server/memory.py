@@ -20,7 +20,8 @@ key_file_path = os.path.join(credentials.BASE_DIR, "api key openrouter.txt")
 if os.path.exists(key_file_path):
     with open(key_file_path, "r", encoding="utf-8") as f:
         file_key = f.read().strip()
-        if file_key:
+        default_key = getattr(credentials, "DEFAULT_KEY", "")
+        if file_key and file_key != default_key:
             use_memory = True
 
 class UserFact(BaseModel):
