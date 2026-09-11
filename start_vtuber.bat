@@ -13,9 +13,9 @@ if "%PROJECT_DIR:~-1%"=="\" set "PROJECT_DIR=%PROJECT_DIR:~0,-1%"
 :: GPT-SoVITS directory path
 set "VOICE_DIR=%PROJECT_DIR%\GPT-SoVITS"
 
-echo [1/3] Launching GPT-SoVITS voice clone server (Conda GPTSovits)...
-:: Start GPT-SoVITS using the Conda environment GPTSovits
-start "GPT-SoVITS API" cmd /k "cd /d "%VOICE_DIR%" && call conda activate GPTSovits && python api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml"
+echo [1/3] Launching GPT-SoVITS voice clone server...
+:: Start GPT-SoVITS using the project virtual environment
+start "GPT-SoVITS API" cmd /k "cd /d "%VOICE_DIR%" && set "NLTK_DISABLE_IMPORT_SECURITY=1" && call "%PROJECT_DIR%\.venv\Scripts\activate.bat" && python api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml"
 
 :: Wait 3 seconds for the TTS server to bind to port 9880
 timeout /t 3 /nobreak >nul
