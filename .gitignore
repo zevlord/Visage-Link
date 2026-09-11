@@ -25,6 +25,8 @@ Logs/
 *.log
 graphify-out/
 .hermes/
+backups/
+*.zip
 
 # Deprecated/Old Files & Scratch Notes
 HAWSBERRY_CONTEXT.md
