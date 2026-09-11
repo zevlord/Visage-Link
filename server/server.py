@@ -20,10 +20,12 @@ async def lifespan(app: FastAPI):
     # [STARTUP]
     loop = asyncio.get_running_loop()
     idle_animator.start_animator(loop)
+    chat_handler.start_watchdog(loop)
     
     yield  # The server runs while paused here
     
     # [SHUTDOWN]
+    chat_handler.stop_watchdog()
     idle_animator.stop_animator()
 
 # Get parent workspace directory

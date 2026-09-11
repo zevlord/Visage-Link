@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { playNextAudio, initAudioContext, stopTtsPlayback } from './viseme.js';
+import { triggerEmotion } from './vseeface_control.js';
 
 const chatLog = document.getElementById('chat-log');
 const inputField = document.getElementById('chat-input');
@@ -27,6 +28,34 @@ export function initWebSocket() {
             // Text logs
             const data = JSON.parse(event.data);
             
+            if (data.type === "STREAM_START") {
+                console.log("[WS] Response stream started.");
+                state.isStreaming = true;
+                return;
+            }
+
+            if (data.type === "EMOTION") {
+                state.currentEmotion = data.value;
+                triggerEmotion(data.value);
+                return;
+            }
+
+            if (data.type === "STREAM_END") {
+                console.log("[WS] Response stream completed.");
+                state.isStreaming = false;
+                chatLog.innerText = "Vtuber: " + (data.text || '');
+                if (data.emotion) {
+                    state.currentEmotion = data.emotion;
+                }
+                // If playback already finished while waiting for stream end, finalize loop
+                if (!state.isPlaying && state.audioQueue.length === 0) {
+                    if (window.onTtsFinished) {
+                        window.onTtsFinished();
+                    }
+                }
+                return;
+            }
+
             if (data.type === "EMPTY") {
                 console.log("[ASR] Transcription was blank. Skipping LLM call and resetting voice loop.");
                 updateVoiceStatus("Voice Mode", "#aaa", "#333");
@@ -43,6 +72,7 @@ export function initWebSocket() {
             // Extract and store incoming emotion
             if (data.type === "REPLY" && data.emotion) {
                 state.currentEmotion = data.emotion;
+                triggerEmotion(data.emotion);
             }
         }
     };

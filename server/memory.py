@@ -1,47 +1,73 @@
 import os
-import credentials  # Ensures environment keys are loaded
-from pydantic import BaseModel
+import sqlite3
+import asyncio
 
-# Ponytail: make langmem optional — only import if needed, don't crash the server
-try:
-    from langgraph.store.memory import InMemoryStore
-    from langmem import create_memory_store_manager
-    LANGMEM_AVAILABLE = True
-except (ImportError, AttributeError) as e:
-    print(f"[MEMORY] langmem not available, disabling memory features: {e}")
-    LANGMEM_AVAILABLE = False
-    InMemoryStore = None
-    create_memory_store_manager = None
+# Local SQLite database for persistent facts
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.db")
 
-# Enable memory manager only if a custom API key is supplied
-use_memory = False
-key_file_path = os.path.join(credentials.BASE_DIR, "api key openrouter.txt")
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_facts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                fact TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, fact)
+            )
+        """)
+        conn.commit()
 
-if os.path.exists(key_file_path):
-    with open(key_file_path, "r", encoding="utf-8") as f:
-        file_key = f.read().strip()
-        default_key = getattr(credentials, "DEFAULT_KEY", "")
-        if file_key and file_key != default_key:
-            use_memory = True
+init_db()
 
-class UserFact(BaseModel):
-    """Store stable facts or preferences about the user."""
-    topic: str
-    fact: str
+use_memory = True
 
-memory_store = None
-memory_manager = None
+def get_memory_context(user_id: str = "user_001") -> str:
+    """Returns formatted memory facts about Darling to inject into the system prompt."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT fact FROM user_facts WHERE user_id = ? ORDER BY id DESC LIMIT 15", (user_id,))
+            rows = cursor.fetchall()
+            if not rows:
+                return ""
+            facts = [f"- {row[0]}" for row in reversed(rows)]
+            return "Facts I remember about Darling:\n" + "\n".join(facts) + "\n"
+    except Exception as e:
+        print(f"[MEMORY] Error reading memories: {e}")
+        return ""
 
-if use_memory and LANGMEM_AVAILABLE:
-    memory_store = InMemoryStore(
-        index={
-            "dims": 1536,
-            "embed": "openai:text-embedding-3-small",
-        }
-    )
-    memory_manager = create_memory_store_manager( 
-        "openai:meta-llama/llama-3.1-8b-instruct",
-        schemas=[UserFact],
-        namespace=("memories", "{user_id}"),
-        store=memory_store
-    )
+def save_fact(fact: str, user_id: str = "user_001"):
+    """Inserts a single fact for a user."""
+    clean_fact = fact.strip().lstrip("-*• ")
+    if not clean_fact or len(clean_fact) < 3:
+        return
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("INSERT OR IGNORE INTO user_facts (user_id, fact) VALUES (?, ?)", (user_id, clean_fact))
+            conn.commit()
+            print(f"[MEMORY] Saved fact: {clean_fact}")
+    except Exception as e:
+        print(f"[MEMORY] Error saving fact: {e}")
+
+async def extract_and_store_facts(user_message: str, user_id: str = "user_001"):
+    """Extracts personal user facts in the background using the local LLM."""
+    if len(user_message.strip()) < 8:
+        return
+    try:
+        import models
+        prompt = (
+            f"User message: \"{user_message}\"\n\n"
+            "Task: Does the user explicitly state a personal fact, habit, preference, name, or detail about themselves? "
+            "If YES, state the concise fact in English (e.g. 'Likes eating ramen', 'Works as a software developer'). "
+            "If NO personal fact is revealed, reply strictly with 'NONE'. Do not include markdown or reasoning."
+        )
+        response = await models.llm.ainvoke([{"role": "user", "content": prompt}])
+        reply = response.content.strip()
+        if reply and "NONE" not in reply.upper() and not reply.startswith("{"):
+            for line in reply.splitlines():
+                line = line.strip()
+                if line and not line.upper().startswith("NONE"):
+                    save_fact(line, user_id)
+    except Exception as e:
+        print(f"[MEMORY] Background extraction error: {e}")

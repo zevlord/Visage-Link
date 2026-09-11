@@ -24,6 +24,12 @@ export function playNextAudio() {
         activeLoopId = null; // Reset loop token
         resetVisemes();
         
+        // If still streaming subsequent sentence chunks from backend, do not reset speaking state/emotions yet
+        if (state.isStreaming) {
+            console.log("[ASR] Audio queue idle but stream still active. Waiting for next chunk.");
+            return;
+        }
+
         // Reset emotions back to Neutral
         resetAllEmotions();
 

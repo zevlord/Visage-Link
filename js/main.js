@@ -31,6 +31,19 @@ chatInput.addEventListener('keypress', (e) => {
 // 5. speech recognition module 
 initSpeechRecognition();
 
+// 6. Autonomous boredom toggle
+const autoChatterCheckbox = document.getElementById('autonomous-mode-checkbox');
+if (autoChatterCheckbox) {
+    autoChatterCheckbox.addEventListener('change', (e) => {
+        if (window.chatSocket && window.chatSocket.readyState === WebSocket.OPEN) {
+            window.chatSocket.send(JSON.stringify({
+                type: "SET_AUTONOMOUS",
+                value: e.target.checked
+            }));
+        }
+    });
+}
+
 // 5. Log ready state
 console.log('[MAIN] Browser control panel ready — VSeeFace should be receiving OSC on port 39539');
 console.log('[MAIN] Model rendering is handled by VSeeFace, not the browser.');

@@ -23,6 +23,7 @@ voice sample/
 # Logs & temp files
 Logs/
 *.log
+*.db
 graphify-out/
 .hermes/
 backups/
