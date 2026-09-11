@@ -88,6 +88,16 @@ export function playNextAudio() {
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         source.start(0);
 
+        // Activate subtitle at the exact millisecond voice audio starts playing
+        if (state.pendingSubtitle) {
+            const chatLog = document.getElementById('chat-log');
+            if (chatLog) chatLog.innerText = "Vtuber: " + state.pendingSubtitle;
+            if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+                state.websocket.send(JSON.stringify({ type: "SHOW_SUBTITLE", value: state.pendingSubtitle }));
+            }
+            state.pendingSubtitle = null;
+        }
+
         // Trigger facial expression at the exact millisecond the audio starts playing
         if (state.currentEmotion) {
             triggerEmotion(state.currentEmotion);

@@ -105,89 +105,112 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
             ja_emitted_index = 0
             DELIMITERS = set("。！？!?\n")
 
-            # 3. Stream LLM tokens, parse emotion and sentence chunks on the fly
-            async for chunk in models.llm.astream(current_messages):
-                token = chunk.content
-                full_reply += token
+            # Asynchronous queue for concurrent TTS synthesis
+            sentence_queue = asyncio.Queue()
 
-                # Parse emotion as early as possible
-                if not emotion_sent:
-                    m_emo = re.search(r'"emotion"\s*:\s*"([^"]+)"', full_reply)
-                    if m_emo:
-                        emotion_val = m_emo.group(1).strip().lower()
-                        emotion_sent = True
-                        await broadcast_text({"type": "EMOTION", "value": emotion_val})
+            async def tts_worker():
+                while True:
+                    item = await sentence_queue.get()
+                    if item is None:
+                        break
+                    sent_text, emo = item
+                    try:
+                        audio_b64 = await voice_service.generate_speech(sent_text, emo)
+                        if audio_b64:
+                            await broadcast_bytes(base64.b64decode(audio_b64))
+                    except Exception as e:
+                        print(f"[TTS] Worker error: {e}")
+                    finally:
+                        sentence_queue.task_done()
 
-                # Parse Japanese text chunks on the fly
-                if not ja_done:
-                    m_ja_start = re.search(r'"ja"\s*:\s*"', full_reply)
-                    if m_ja_start:
-                        start_pos = m_ja_start.end()
-                        content_so_far = full_reply[start_pos:]
+            worker_task = asyncio.create_task(tts_worker())
 
-                        is_escaped = False
-                        end_quote_idx = -1
-                        for i, ch in enumerate(content_so_far):
-                            if ch == '\\':
-                                is_escaped = not is_escaped
-                            elif ch == '"' and not is_escaped:
-                                end_quote_idx = i
-                                break
+            try:
+                # 3. Stream LLM tokens, parse emotion and sentence chunks on the fly
+                async for chunk in models.llm.astream(current_messages):
+                    token = chunk.content
+                    full_reply += token
+
+                    # Parse emotion as early as possible
+                    if not emotion_sent:
+                        m_emo = re.search(r'"emotion"\s*:\s*"([^"]+)"', full_reply)
+                        if m_emo:
+                            emotion_val = m_emo.group(1).strip().lower()
+                            emotion_sent = True
+                            await broadcast_text({"type": "EMOTION", "value": emotion_val})
+
+                    # Parse Japanese text chunks on the fly
+                    if not ja_done:
+                        m_ja_start = re.search(r'"ja"\s*:\s*"', full_reply)
+                        if m_ja_start:
+                            start_pos = m_ja_start.end()
+                            content_so_far = full_reply[start_pos:]
+
+                            is_escaped = False
+                            end_quote_idx = -1
+                            for i, ch in enumerate(content_so_far):
+                                if ch == '\\':
+                                    is_escaped = not is_escaped
+                                elif ch == '"' and not is_escaped:
+                                    end_quote_idx = i
+                                    break
+                                else:
+                                    is_escaped = False
+
+                            if end_quote_idx != -1:
+                                ja_text = content_so_far[:end_quote_idx]
+                                ja_done = True
                             else:
-                                is_escaped = False
+                                ja_text = content_so_far
 
-                        if end_quote_idx != -1:
-                            ja_text = content_so_far[:end_quote_idx]
-                            ja_done = True
-                        else:
-                            ja_text = content_so_far
+                            while ja_emitted_index < len(ja_text):
+                                found_delim_idx = -1
+                                for idx in range(ja_emitted_index, len(ja_text)):
+                                    if ja_text[idx] in DELIMITERS:
+                                        found_delim_idx = idx
+                                        break
 
-                        while ja_emitted_index < len(ja_text):
-                            found_delim_idx = -1
-                            for idx in range(ja_emitted_index, len(ja_text)):
-                                if ja_text[idx] in DELIMITERS:
-                                    found_delim_idx = idx
+                                if found_delim_idx != -1:
+                                    sentence = ja_text[ja_emitted_index : found_delim_idx + 1].strip()
+                                    ja_emitted_index = found_delim_idx + 1
+                                    if sentence:
+                                        await sentence_queue.put((sentence, emotion_val))
+                                else:
                                     break
 
-                            if found_delim_idx != -1:
-                                sentence = ja_text[ja_emitted_index : found_delim_idx + 1].strip()
-                                ja_emitted_index = found_delim_idx + 1
-                                if sentence:
-                                    audio_b64 = await voice_service.generate_speech(sentence, emotion_val)
-                                    if audio_b64:
-                                        await broadcast_bytes(base64.b64decode(audio_b64))
-                            else:
-                                break
+                            if ja_done:
+                                remainder = ja_text[ja_emitted_index:].strip()
+                                if remainder:
+                                    ja_emitted_index += len(remainder)
+                                    await sentence_queue.put((remainder, emotion_val))
 
-                        if ja_done:
-                            remainder = ja_text[ja_emitted_index:].strip()
-                            if remainder:
-                                ja_emitted_index += len(remainder)
-                                audio_b64 = await voice_service.generate_speech(remainder, emotion_val)
-                                if audio_b64:
-                                    await broadcast_bytes(base64.b64decode(audio_b64))
+                # Fallback if no sentence chunk was emitted
+                if ja_emitted_index == 0 and full_reply.strip():
+                    await sentence_queue.put((full_reply, emotion_val))
+
+                # Parse translation immediately as LLM completes
+                ai_reply_en = full_reply
+                try:
+                    parsed = json.loads(full_reply)
+                    ai_reply_en = parsed.get("en", full_reply).strip()
+                    if not emotion_sent:
+                        emotion_val = parsed.get("emotion", "neutral").strip().lower()
+                except Exception:
+                    m_en = re.search(r'"en"\s*:\s*"([^"]+)"', full_reply)
+                    if m_en:
+                        ai_reply_en = m_en.group(1).strip()
+
+                # Broadcast TEXT_PREPARE so client has subtitle ready before first audio byte arrives
+                await broadcast_text({"type": "TEXT_PREPARE", "value": ai_reply_en})
+
+            finally:
+                # Signal worker to finish and wait for all TTS chunks to be synthesized
+                await sentence_queue.put(None)
+                await worker_task
 
             # Small pause to let LLM connection pool settle cleanly
             await asyncio.sleep(0.05)
             print(f"AI replied: {full_reply.encode('ascii', errors='replace').decode('ascii')}")
-
-            # Fallback if no sentence chunk was emitted
-            if ja_emitted_index == 0 and full_reply.strip():
-                audio_b64 = await voice_service.generate_speech(full_reply, emotion_val)
-                if audio_b64:
-                    await broadcast_bytes(base64.b64decode(audio_b64))
-
-            # Parse translation
-            ai_reply_en = full_reply
-            try:
-                parsed = json.loads(full_reply)
-                ai_reply_en = parsed.get("en", full_reply).strip()
-                if not emotion_sent:
-                    emotion_val = parsed.get("emotion", "neutral").strip().lower()
-            except Exception:
-                m_en = re.search(r'"en"\s*:\s*"([^"]+)"', full_reply)
-                if m_en:
-                    ai_reply_en = m_en.group(1).strip()
 
             # Record in conversation history
             if not is_autonomous:
@@ -197,9 +220,6 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
             # Background memory extraction on user turns
             if not is_autonomous and memory.use_memory:
                 asyncio.create_task(memory.extract_and_store_facts(user_prompt, user_id))
-
-            # Broadcast English subtitles text
-            await broadcast_text({"type": "TEXT", "value": ai_reply_en})
 
             # Broadcast STREAM_END to finalize turn
             await broadcast_text({
@@ -281,6 +301,12 @@ async def handle_chat_session(websocket: WebSocket):
                     val = data.get("value", False)
                     import idle_animator
                     idle_animator.set_speaking(val)
+                    continue
+
+                # Handle Subtitle activation request (triggered when voice starts playing)
+                if data.get("type") == "SHOW_SUBTITLE":
+                    val = data.get("value", "")
+                    await broadcast_text({"type": "TEXT", "value": val})
                     continue
 
                 # Handle Autonomous mode toggle

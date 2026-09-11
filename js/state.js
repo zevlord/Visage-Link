@@ -3,6 +3,7 @@ export const state = {
     audioQueue: [],
     isPlaying: false,
     isStreaming: false,
+    pendingSubtitle: null,
     currentEmotion: 'neutral',
     audioContext: null,
     websocket: null,

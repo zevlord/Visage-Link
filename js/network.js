@@ -34,6 +34,20 @@ export function initWebSocket() {
                 return;
             }
 
+            if (data.type === "TEXT_PREPARE") {
+                console.log("[WS] Subtitle prepared:", data.value);
+                state.pendingSubtitle = data.value;
+                // If voice audio is already playing, activate subtitle immediately
+                if (state.isPlaying) {
+                    chatLog.innerText = "Vtuber: " + state.pendingSubtitle;
+                    if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+                        state.websocket.send(JSON.stringify({ type: "SHOW_SUBTITLE", value: state.pendingSubtitle }));
+                    }
+                    state.pendingSubtitle = null;
+                }
+                return;
+            }
+
             if (data.type === "EMOTION") {
                 state.currentEmotion = data.value;
                 triggerEmotion(data.value);
@@ -43,9 +57,18 @@ export function initWebSocket() {
             if (data.type === "STREAM_END") {
                 console.log("[WS] Response stream completed.");
                 state.isStreaming = false;
-                chatLog.innerText = "Vtuber: " + (data.text || '');
                 if (data.emotion) {
                     state.currentEmotion = data.emotion;
+                }
+                // If subtitles are still pending (e.g. no audio synthesized), show now as fallback
+                if (state.pendingSubtitle) {
+                    chatLog.innerText = "Vtuber: " + state.pendingSubtitle;
+                    if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+                        state.websocket.send(JSON.stringify({ type: "SHOW_SUBTITLE", value: state.pendingSubtitle }));
+                    }
+                    state.pendingSubtitle = null;
+                } else if (data.text) {
+                    chatLog.innerText = "Vtuber: " + data.text;
                 }
                 // If playback already finished while waiting for stream end, finalize loop
                 if (!state.isPlaying && state.audioQueue.length === 0) {
