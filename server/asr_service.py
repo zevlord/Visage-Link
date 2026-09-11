@@ -2,10 +2,10 @@ import os
 import tempfile
 from faster_whisper import WhisperModel
 
-# Initialize the model on CPU with float32 computation (low resource footprint)
+# Initialize the model on CPU with int8 quantization (fast, low memory footprint)
 # Model options: "tiny", "base", "small" ("base" is recommended for speed and accuracy)
 print("[ASR] Loading Whisper model...")
-model = WhisperModel("base", device="cpu", compute_type="float32")
+model = WhisperModel("base", device="cpu", compute_type="int8")
 print("[ASR] Whisper model loaded successfully.")
 
 def transcribe_audio(audio_bytes: bytes) -> str | None:
