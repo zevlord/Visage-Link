@@ -17,6 +17,7 @@ import voice_service
 
 # Global set to keep track of all active WebSocket connections (browser, desktop overlay, etc.)
 active_websockets = set()
+user_websockets = set()
 pipeline_lock = asyncio.Lock()
 is_busy = False
 autonomous_enabled = True
@@ -203,10 +204,19 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
                 # Broadcast TEXT_PREPARE so client has subtitle ready before first audio byte arrives
                 await broadcast_text({"type": "TEXT_PREPARE", "value": ai_reply_en})
 
+            except asyncio.CancelledError:
+                if not worker_task.done():
+                    worker_task.cancel()
+                raise
             finally:
-                # Signal worker to finish and wait for all TTS chunks to be synthesized
-                await sentence_queue.put(None)
-                await worker_task
+                # Signal worker to finish and wait with timeout to avoid hanging server shutdown
+                if not worker_task.done():
+                    await sentence_queue.put(None)
+                    try:
+                        await asyncio.wait_for(worker_task, timeout=2.0)
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        if not worker_task.done():
+                            worker_task.cancel()
 
             # Small pause to let LLM connection pool settle cleanly
             await asyncio.sleep(0.05)
@@ -238,7 +248,8 @@ async def chatter_watchdog_loop():
     try:
         while True:
             await asyncio.sleep(5.0)
-            if not autonomous_enabled or is_busy or not active_websockets:
+            # Only chatter if user has active interactive session
+            if not autonomous_enabled or is_busy or not user_websockets:
                 continue
 
             idle_time = time.time() - last_activity_time
@@ -273,7 +284,10 @@ async def handle_chat_session(websocket: WebSocket):
     # ponytail: accept connection directly in handler instead of separate manager class (YAGNI)
     await websocket.accept()
     active_websockets.add(websocket)
-    print(f"Client connected! Active connections: {len(active_websockets)}")
+    is_overlay = websocket.query_params.get("client") == "overlay"
+    if not is_overlay:
+        user_websockets.add(websocket)
+    print(f"Client connected! Active: {len(active_websockets)}, User sessions: {len(user_websockets)}")
     touch_activity()
 
     try:
@@ -338,4 +352,5 @@ async def handle_chat_session(websocket: WebSocket):
         print("Client disconnected!")
     finally:
         active_websockets.discard(websocket)
-        print(f"Cleaned up active connection. Remaining: {len(active_websockets)}")
+        user_websockets.discard(websocket)
+        print(f"Cleaned up active connection. Remaining: {len(active_websockets)}, User: {len(user_websockets)}")

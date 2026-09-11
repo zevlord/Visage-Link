@@ -45,8 +45,15 @@ pause >nul
 
 echo.
 echo Stopping servers...
-:: Close the command windows and kill their child processes cleanly using PowerShell command line filtering
-powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*api_v2.py*' -or $_.CommandLine -like '*uvicorn*' -or $_.CommandLine -like '*desktop_overlay.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+
+:: 1. Terminate all processes holding port 8000 and port 9880 (clean tree kill)
+powershell -Command "$ports = @(8000, 9880); foreach ($p in $ports) { $lines = netstat -ano | Select-String 'LISTENING' | Select-String (':{0}\b' -f $p); foreach ($l in $lines) { $pidVal = ($l.Line.Trim() -split '\s+')[-1]; if ($pidVal -match '^\d+$' -and $pidVal -ne '0') { taskkill /F /T /PID $pidVal 2>$null } } }"
+
+:: 2. Close spawned command prompt windows by window title
+taskkill /F /T /FI "WINDOWTITLE eq GPT-SoVITS API*" 2>nul
+taskkill /F /T /FI "WINDOWTITLE eq FastAPI Backend*" 2>nul
+taskkill /F /T /FI "WINDOWTITLE eq Subtitle Overlay*" 2>nul
+taskkill /F /T /FI "WINDOWTITLE eq AI Vtuber Overlay Subtitles*" 2>nul
 
 echo Done! All processes terminated.
 timeout /t 2 >nul

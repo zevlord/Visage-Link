@@ -113,7 +113,7 @@ class SubtitleOverlay:
             while True:
                 try:
                     ws = WebSocketApp(
-                        "ws://127.0.0.1:8000/ws/chat", on_message=self.on_ws_message
+                        "ws://127.0.0.1:8000/ws/chat?client=overlay", on_message=self.on_ws_message
                     )
                     ws.run_forever()
                 except Exception as e:
