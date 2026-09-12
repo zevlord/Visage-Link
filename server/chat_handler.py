@@ -204,19 +204,18 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
                 # Broadcast TEXT_PREPARE so client has subtitle ready before first audio byte arrives
                 await broadcast_text({"type": "TEXT_PREPARE", "value": ai_reply_en})
 
+                # Signal worker to finish and wait for all TTS chunks to be synthesized
+                await sentence_queue.put(None)
+                await worker_task
+
             except asyncio.CancelledError:
                 if not worker_task.done():
                     worker_task.cancel()
                 raise
             finally:
-                # Signal worker to finish and wait with timeout to avoid hanging server shutdown
+                # Ensure worker task is cancelled if pipeline was interrupted
                 if not worker_task.done():
-                    await sentence_queue.put(None)
-                    try:
-                        await asyncio.wait_for(worker_task, timeout=2.0)
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        if not worker_task.done():
-                            worker_task.cancel()
+                    worker_task.cancel()
 
             # Small pause to let LLM connection pool settle cleanly
             await asyncio.sleep(0.05)
