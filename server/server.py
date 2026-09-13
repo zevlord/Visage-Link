@@ -1,5 +1,15 @@
 import os
 import sys
+
+# Force UTF-8 standard output so Japanese text prints safely on Windows
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 import asyncio
 from contextlib import asynccontextmanager
 

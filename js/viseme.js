@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { sendOscBlendShape, sendOscApply, resetAllEmotions, triggerEmotion } from './vseeface_control.js';
+import { sendOscBlendShape, sendOscBlendShapesBatch, sendOscApply, resetAllEmotions, triggerEmotion } from './vseeface_control.js';
 
 export const visemeValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
@@ -14,6 +14,9 @@ export function resetVisemes() {
 export function initAudioContext() {
     if (!state.audioContext) {
         state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (state.audioContext.state === 'suspended') {
+        state.audioContext.resume();
     }
 }
 
@@ -32,6 +35,7 @@ export function playNextAudio() {
 
         // Reset emotions back to Neutral
         resetAllEmotions();
+        sendOscBlendShapesBatch({ 'A': 0, 'I': 0, 'U': 0, 'E': 0, 'O': 0 });
 
         // Reset voice button label
         const voiceBtn = document.getElementById('voice-btn');
@@ -74,6 +78,10 @@ export function playNextAudio() {
     activeLoopId = loopId;
 
     initAudioContext();
+    if (state.audioContext.state === 'suspended') {
+        state.audioContext.resume();
+    }
+
     state.audioContext.decodeAudioData(audioData, (buffer) => {
         console.log("[ASR] Audio decoded successfully. Starting playback.");
         const source = state.audioContext.createBufferSource();
@@ -110,66 +118,52 @@ export function playNextAudio() {
             }
             if (!state.isPlaying) return;
             
-            // Use time domain data (amplitude/waveform) instead of frequency data
-            // Speech energy is concentrated in a tiny fraction of frequency bins, 
-            // causing frequency averages to register near 0.
+            // Use time domain data (amplitude/waveform)
             analyser.getByteTimeDomainData(dataArray);
 
             let totalDeviation = 0;
             for (let i = 0; i < dataArray.length; i++) {
-                // Time domain values range from 0 to 255, with silence centered at 128.
                 totalDeviation += Math.abs(dataArray[i] - 128);
             }
             const averageDeviation = totalDeviation / dataArray.length;
 
-            const volume = averageDeviation / 128.0; // Max deviation is 128
-            const scale = Math.min(volume * 5.0, 1.0);  // Boost scale for expressive mouth shapes
+            // Speech signal amplitude is typically 2.0 - 25.0 deviation in 8-bit time domain
+            // Apply boost so mouth opens noticeably (0.35 to 1.0)
+            const volume = averageDeviation / 18.0;
+            const scale = Math.min(Math.max(volume * 1.8, 0.0), 1.0);
 
-            // Log volume metrics every 10 frames (~160ms) to ensure visibility on short sentences
+            // Log volume metrics every 15 frames (~250ms)
             frameCount++;
-            if (frameCount % 10 === 0) {
-                console.log(`[ASR] LipSync Active. Volume Deviation: ${averageDeviation.toFixed(1)}, Scale: ${scale.toFixed(2)}`);
+            if (frameCount % 15 === 0) {
+                console.log(`[ASR] LipSync Active. Deviation: ${averageDeviation.toFixed(1)}, Scale: ${scale.toFixed(2)}`);
             }
 
             // Simple procedurally simulated vowels
             const time = performance.now() / 1000.0;
-            const shapeSelector = Math.floor(time * 4) % 3;
+            const shapeSelector = Math.floor(time * 5) % 3;
 
             resetVisemes();
-            if (shapeSelector === 0) {
-                visemeValues.aa = scale * 0.9;
-                visemeValues.ih = scale * 0.2;
-            } else if (shapeSelector === 1) {
-                visemeValues.ee = scale * 0.8;
-                visemeValues.ih = scale * 0.4;
-            } else {
-                visemeValues.ou = scale * 0.7;
-                visemeValues.oh = scale * 0.3;
+            if (scale > 0.05) {
+                if (shapeSelector === 0) {
+                    visemeValues.aa = scale * 1.0;
+                    visemeValues.ih = scale * 0.2;
+                } else if (shapeSelector === 1) {
+                    visemeValues.ee = scale * 0.9;
+                    visemeValues.ih = scale * 0.4;
+                } else {
+                    visemeValues.ou = scale * 0.8;
+                    visemeValues.oh = scale * 0.5;
+                }
             }
 
-            // Send visemes to VSeeFace via OSC (supports VRM0, VRM1, and custom name styles)
-            // 1. VRM0 standard uppercase
-            sendOscBlendShape('A', visemeValues.aa);
-            sendOscBlendShape('I', visemeValues.ih);
-            sendOscBlendShape('U', visemeValues.ou);
-            sendOscBlendShape('E', visemeValues.ee);
-            sendOscBlendShape('O', visemeValues.oh);
-            
-            // 2. VRM1 standard lowercase
-            sendOscBlendShape('aa', visemeValues.aa);
-            sendOscBlendShape('ih', visemeValues.ih);
-            sendOscBlendShape('ou', visemeValues.ou);
-            sendOscBlendShape('ee', visemeValues.ee);
-            sendOscBlendShape('oh', visemeValues.oh);
-
-            // 3. Lowercase single letters fallback
-            sendOscBlendShape('a', visemeValues.aa);
-            sendOscBlendShape('i', visemeValues.ih);
-            sendOscBlendShape('u', visemeValues.ou);
-            sendOscBlendShape('e', visemeValues.ee);
-            sendOscBlendShape('o', visemeValues.oh);
-
-            sendOscApply();
+            // Send ONE batch OSC message for the standard VRM0 vowels
+            sendOscBlendShapesBatch({
+                'A': visemeValues.aa,
+                'I': visemeValues.ih,
+                'U': visemeValues.ou,
+                'E': visemeValues.ee,
+                'O': visemeValues.oh
+            });
 
             requestAnimationFrame(updateLipSync);
         }
@@ -181,29 +175,7 @@ export function playNextAudio() {
                 activeSource = null;
             }
             resetVisemes();
-            
-            // Reset VRM0
-            sendOscBlendShape('A', 0);
-            sendOscBlendShape('I', 0);
-            sendOscBlendShape('U', 0);
-            sendOscBlendShape('E', 0);
-            sendOscBlendShape('O', 0);
-
-            // Reset VRM1
-            sendOscBlendShape('aa', 0);
-            sendOscBlendShape('ih', 0);
-            sendOscBlendShape('ou', 0);
-            sendOscBlendShape('ee', 0);
-            sendOscBlendShape('oh', 0);
-
-            // Reset lowercase fallbacks
-            sendOscBlendShape('a', 0);
-            sendOscBlendShape('i', 0);
-            sendOscBlendShape('u', 0);
-            sendOscBlendShape('e', 0);
-            sendOscBlendShape('o', 0);
-
-            sendOscApply();
+            sendOscBlendShapesBatch({ 'A': 0, 'I': 0, 'U': 0, 'E': 0, 'O': 0 });
             playNextAudio();
         };
     }, (e) => {
@@ -218,6 +190,7 @@ export function stopTtsPlayback() {
     activeLoopId = null;   // Kill lip sync loop
     resetVisemes();
     resetAllEmotions();
+    sendOscBlendShapesBatch({ 'A': 0, 'I': 0, 'U': 0, 'E': 0, 'O': 0 });
     
     if (activeSource) {
         try {

@@ -1,12 +1,18 @@
 import { initDebugConsole } from './debug.js';
 import { initWebSocket, sendMessage, initSpeechRecognition } from './network.js';
 import { sendOscBlendShape, triggerEmotion, resetAllEmotions } from './vseeface_control.js';
+import { initAudioContext } from './viseme.js';
 
 // 1. Setup logs
 initDebugConsole();
 
 // 2. Initialize WebSocket to backend (chat)
 initWebSocket();
+
+// Wake AudioContext on first user interaction to bypass browser autoplay restrictions
+['click', 'keydown', 'touchstart'].forEach(evt => {
+    document.addEventListener(evt, () => initAudioContext(), { passive: true });
+});
 
 // 3. Wire up UI buttons to VSeeFace via OSC
 document.getElementById('btn-happy').addEventListener('click', () => triggerEmotion('happy'));

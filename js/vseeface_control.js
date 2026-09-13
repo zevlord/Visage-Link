@@ -41,6 +41,13 @@ export function sendOscBlendShape(name, value) {
     sendOscMessage('/VMC/Ext/Blend/Val', [name, value]);
 }
 
+export function sendOscBlendShapesBatch(shapes) {
+    if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+        const payload = JSON.stringify({ type: 'OSC_BATCH', shapes });
+        state.websocket.send(payload);
+    }
+}
+
 const emotionRecipes = {
     neutral: [['Neutral', 1.0]],
     joy: [['Neutral', 0.3], ['Joy', 0.65]],
@@ -51,7 +58,8 @@ const emotionRecipes = {
     sweet: [['Neutral', 0.6], ['Joy', 0.35]],
     jealous: [['Neutral', 0.3], ['Angry', 0.35], ['Sorrow', 0.25]],
     excited: [['Neutral', 0.2], ['Joy', 0.45], ['Extra', 0.7]],
-    flirtatious: [['Neutral', 0.3], ['Joy', 0.4], ['Fun', 0.3]]
+    flirtatious: [['Neutral', 0.3], ['Joy', 0.4], ['Fun', 0.3]],
+    aa: [['Neutral', 0.0], ['A', 1.0]]
 };
 
 export function triggerEmotion(emotionName) {

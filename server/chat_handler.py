@@ -309,6 +309,14 @@ async def handle_chat_session(websocket: WebSocket):
                     osc_forwarder.send_osc_blendshapes([(address, args)])
                     continue
 
+                # Handle Batched VSeeFace blendshapes (Lip Sync visemes)
+                if data.get("type") == "OSC_BATCH":
+                    shapes = data.get("shapes", {})
+                    msgs = [("/VMC/Ext/Blend/Val", [name, float(val)]) for name, val in shapes.items()]
+                    msgs.append(("/VMC/Ext/Blend/Apply", []))
+                    osc_forwarder.send_osc_blendshapes(msgs)
+                    continue
+
                 # Handle Speaking state tracking
                 if data.get("type") == "SPEAKING":
                     val = data.get("value", False)
