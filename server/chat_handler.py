@@ -246,9 +246,68 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
             is_busy = False
             touch_activity()
 
+def get_active_window_title() -> str:
+    """Retrieves the current active foreground window title via Win32 ctypes."""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buff = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buff, length + 1)
+            val = buff.value.strip()
+            # Clean and truncate to avoid privacy leaks or overflow
+            return val[:80]
+    except Exception:
+        pass
+    return ""
+
+def build_dynamic_autonomous_cue() -> str:
+    """Builds a rich contextual cue with real-world time, desktop activity, and varied personality impulses."""
+    now = time.localtime()
+    hour = now.tm_hour
+    minute = now.tm_min
+    time_str = f"{hour:02d}:{minute:02d}"
+
+    if 0 <= hour < 5:
+        time_context = f"Very late night / early dawn ({time_str})"
+    elif 5 <= hour < 11:
+        time_context = f"Morning ({time_str})"
+    elif 11 <= hour < 17:
+        time_context = f"Afternoon ({time_str})"
+    elif 17 <= hour < 22:
+        time_context = f"Evening ({time_str})"
+    else:
+        time_context = f"Late night ({time_str})"
+
+    win_title = get_active_window_title()
+    activity_context = f"Darling's active screen/window: '{win_title}'" if win_title else "Darling is sitting at their PC in silence"
+
+    mood_sparks = [
+        "You are bored and crave Darling's immediate attention. Tease them with a mischievous remark or light threat.",
+        "Notice the late hour or current time of day. Comment on Darling's sleeping habits, posture, or working too hard.",
+        "Comment playfully on what Darling seems to be doing on screen, or wonder why they are staring so intently.",
+        "Sensory animalistic impulse: mention a faint scent in the air, your horns tingling, or wanting something sweet or warm.",
+        "Ask Darling an unexpected, intimate, or silly question out of nowhere to start a conversation.",
+        "Make a quiet, affectionate observation about enjoying their presence even when neither of you is talking.",
+        "Sigh playfully, yawn, or complain that the room is too quiet and you need entertainment.",
+        "Daydream aloud about flying in Strelizia or going somewhere outside together."
+    ]
+    spark = random.choice(mood_sparks)
+
+    return (
+        f"[AUTONOMOUS IDLE EVENT]\n"
+        f"Time Context: {time_context}\n"
+        f"Activity: {activity_context}\n"
+        f"Spontaneous Impulse: {spark}\n"
+        "Instruction: Speak up unprompted to break the silence. Do NOT explain or quote this prompt. Say one or two natural, lively in-character sentences directly to Darling."
+    )
+
 async def chatter_watchdog_loop():
     """Watchdog loop that triggers autonomous remarks if user has been silent."""
-    print("[AUTONOMY] Idle chatter watchdog loop started.")
+    print("[AUTONOMY] Dynamic idle chatter watchdog loop started.")
+    current_threshold = random.uniform(50.0, 85.0)
     try:
         while True:
             await asyncio.sleep(5.0)
@@ -257,16 +316,11 @@ async def chatter_watchdog_loop():
                 continue
 
             idle_time = time.time() - last_activity_time
-            if idle_time >= IDLE_THRESHOLD_SECONDS:
-                print(f"[AUTONOMY] Silence detected ({idle_time:.1f}s). Triggering autonomous remark.")
+            if idle_time >= current_threshold:
+                print(f"[AUTONOMY] Silence detected ({idle_time:.1f}s >= {current_threshold:.1f}s). Triggering dynamic autonomous remark.")
                 touch_activity()
-                idle_cues = [
-                    "Darling has been silent for a while. Tease them playfully or ask why they are so quiet.",
-                    "You feel a little hungry for sweet honey. Make a cute klaxosaur remark to get Darling's attention.",
-                    "Look over at Darling, sigh happily, and mention how nice it is to just hang out together.",
-                    "Sniff playfully and ask Darling what they are doing so quietly."
-                ]
-                cue = random.choice(idle_cues)
+                current_threshold = random.uniform(50.0, 90.0)
+                cue = build_dynamic_autonomous_cue()
                 await run_llm_speech_pipeline(cue, is_autonomous=True)
     except asyncio.CancelledError:
         print("[AUTONOMY] Idle chatter watchdog loop stopped.")
