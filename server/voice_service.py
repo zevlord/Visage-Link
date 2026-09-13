@@ -41,8 +41,8 @@ EMOTION_VOICE_MAP = {
         "prompt": "君の能力は多分まだ眠っているだけだよ。僕なら引き出してあげられる。君は僕のつのを見ても怖がらなかったね。"
     },
     "flirtatious": {
-        "audio": "zt seductive vocals.mp3",
-        "prompt": "えぇー、ドキドキする味だ、ピリピリしてどこか引っかかる、危険な味"
+        "audio": "zerotwo-sample_xQT3YE4h.wav",
+        "prompt": "君の能力は多分まだ眠っているだけだよ。僕なら引き出してあげられる。君は僕のつのを見ても怖がらなかったね。"
     },
     "jealous": {
         "audio": "zt annoyed.mp3",
