@@ -44,11 +44,20 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Initialize fastapi app with lifespan
 app = FastAPI(lifespan=lifespan)
 
-# Serve static files relative to root path to prevent local CORS issues
-app.mount("/Models", StaticFiles(directory=os.path.join(BASE_DIR, "Models")), name="Models")
-app.mount("/voice sample", StaticFiles(directory=os.path.join(BASE_DIR, "voice sample")), name="voice sample")
-app.mount("/js", StaticFiles(directory=os.path.join(BASE_DIR, "js")), name="js")
-app.mount("/css", StaticFiles(directory=os.path.join(BASE_DIR, "css")), name="css")
+# Serve static files relative to root path to prevent local CORS issues.
+# Optional asset directories are mounted only when present, so the server
+# boots on a fresh clone that does not include local VRM models or voice samples.
+def mount_if_exists(route: str, folder: str):
+    path = os.path.join(BASE_DIR, folder)
+    if os.path.isdir(path):
+        app.mount(route, StaticFiles(directory=path), name=route.strip("/") or folder)
+    else:
+        print(f"[Visage Link] Skipping mount '{route}': folder '{folder}' not found.")
+
+mount_if_exists("/Models", "Models")
+mount_if_exists("/voice sample", "voice sample")
+mount_if_exists("/js", "js")
+mount_if_exists("/css", "css")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
@@ -59,6 +68,8 @@ async def get_index():
 @app.get("/test-idle-poses", response_class=HTMLResponse)
 async def get_test():
     test_path = os.path.join(BASE_DIR, "test_idle_poses.html")
+    if not os.path.isfile(test_path):
+        return HTMLResponse("<h1>404</h1><p>test_idle_poses.html not found.</p>", status_code=404)
     with open(test_path, "r", encoding="utf-8") as f:
         return f.read()
 

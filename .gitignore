@@ -37,3 +37,18 @@ fasterWhispertechnical.txt
 how to activate.txt
 archive/
 fix/
+
+# Environment
+.env
+.env.*
+
+# Local databases (may contain personal memory data)
+*.sqlite
+*.sqlite3
+
+# Unused local assets
+Lore/
+Background/
+
+# Windows shortcuts
+*.lnk

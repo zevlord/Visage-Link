@@ -92,7 +92,10 @@ async def run_llm_speech_pipeline(user_prompt: str, is_autonomous: bool = False,
             await broadcast_text({"type": "STREAM_START"})
 
             # 2. Build current conversation context
-            memory_context = memory.get_memory_context(user_id) if memory.use_memory else ""
+            if memory.use_memory:
+                memory_context = await asyncio.to_thread(memory.get_rag_context, user_prompt, user_id)
+            else:
+                memory_context = ""
             current_messages = list(chat_history)
             current_messages[0] = {
                 "role": "system",
