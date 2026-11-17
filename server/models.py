@@ -3,7 +3,7 @@ import os
 from langchain_openai import ChatOpenAI
 
 # LLM client. Defaults to a local Ollama instance; override via environment
-# variables to point at a hosted [OI]-compatible endpoint instead.
+# variables to point at a hosted OpenAI-compatible endpoint instead.
 LLM_MODEL = os.getenv("VISAGE_LLM_MODEL", "qwen2.5:latest")
 LLM_BASE_URL = os.getenv("VISAGE_LLM_BASE_URL", "http://localhost:11434/v1")
 LLM_API_KEY = os.getenv("VISAGE_LLM_API_KEY", "ollama")  # Ollama ignores this value

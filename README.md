@@ -23,7 +23,7 @@ FastAPI backend (:8000)  ── server/
         │
         ├──► VSeeFace        VRM avatar rendering, blendshapes, spring bones
         ├──► GPT-SoVITS      local voice cloning (HTTP :9880)
-        ├──► Ollama          LLM inference ([OI]-compatible, :11434)
+        ├──► Ollama          LLM inference (OpenAI-compatible, :11434)
         └──► Ollama          nomic-embed-text embeddings for memory
 ```
 
